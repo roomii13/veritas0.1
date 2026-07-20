@@ -1,8 +1,10 @@
 # Veritas
 
-App movil con Expo + backend Python local para detectar senales de IA y fraude en imagenes, audios, videos y enlaces.
+App movil con Expo + backend Python local para detectar señales de IA y fraude en imagenes, audios, videos y enlaces.
 
 La app esta orientada a evitar fraudes, estafas, deepfakes, clonacion de voz y enlaces sospechosos. No usa base de datos y no guarda historial: cada analisis se procesa y se borra del backend al terminar.
+
+Por el momento trabaja con repositorios de agentes entrenados, ya que la primera version de veritas utiliza api de hugginface que pide pagos, utilice diferentes cuentas de google de familiares y amigos para poder crear èsta y la primer version de veritas, ya que no lleguè a los tokens gratuitos y desde mi cuenta de google no puedo usar codex porque pide un codigo que envia  a un numero de telefono que ya no tengo. Este proyecto fue creado de 0 con codex y chatgpt utlizando diferentes prompts para las mejoras graduales, la idea es que Veritas sea un detector de IA que se pueda utilizar en diferentes contextos desde telefonos de usarios individuales hazta entidades bancarias incluyendo llamadas y videollamdas a futuro.
 
 ## Arquitectura
 
@@ -92,7 +94,7 @@ Esto evita que la demo quede inutilizable si Torch/Hugging Face falla o si el mo
 $env:VERITAS_ALLOW_HEURISTIC_FALLBACK="false"
 ```
 
-## Limitaciones a tener en cuenta (importante para la demo)
+## Limitaciones a tener en cuenta (importante)
 
 1. **Son modelos de la comunidad, no de empresas grandes.** Entrenados en datasets acotados, perfectos para mostrar el concepto funcionando, pero su precision en el mundo real puede ser menor que la de un producto comercial como Resemble, Hive o Reality Defender.
 2. **El detector de video es un enfoque simplificado**: analiza frames sueltos con el modelo de imagen, no captura inconsistencias temporales como parpadeo o flujo de movimiento como lo haria un modelo especifico tipo CNN+LSTM entrenado para video.
