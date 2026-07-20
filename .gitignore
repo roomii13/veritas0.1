@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+web-build/
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.pyc
+.env
+.DS_Store
+*.log
+veritas-uploads/

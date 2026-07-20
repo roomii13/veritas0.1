@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Veritas",
+    "slug": "veritas",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.veritas.antifraud"
+    },
+    "android": {
+      "package": "com.veritas.antifraud",
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0f313ee9-bbb9-4db1-b6bb-d1e7d669deee"
+      }
+    }
+  }
+}
