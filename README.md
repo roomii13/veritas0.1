@@ -1,10 +1,8 @@
 # Veritas
 
-App movil con Expo + backend Python local para detectar señales de IA y fraude en imagenes, audios, videos y enlaces.
+App movil con Expo + backend Python local para detectar senales de IA y fraude en imagenes, audios, videos y enlaces.
 
 La app esta orientada a evitar fraudes, estafas, deepfakes, clonacion de voz y enlaces sospechosos. No usa base de datos y no guarda historial: cada analisis se procesa y se borra del backend al terminar.
-
-Por el momento trabaja con repositorios de agentes entrenados, ya que la primera version de veritas utiliza api de hugginface que pide pagos, utilice diferentes cuentas de google de familiares y amigos para poder crear èsta y la primer version de veritas, ya que no lleguè a los tokens gratuitos y desde mi cuenta de google no puedo usar codex porque pide un codigo que envia  a un numero de telefono que ya no tengo. Este proyecto fue creado de 0 con codex y chatgpt utlizando diferentes prompts para las mejoras graduales, la idea es que Veritas sea un detector de IA que se pueda utilizar en diferentes contextos desde telefonos de usarios individuales hazta entidades bancarias incluyendo llamadas y videollamdas a futuro.
 
 ## Arquitectura
 
@@ -94,7 +92,23 @@ Esto evita que la demo quede inutilizable si Torch/Hugging Face falla o si el mo
 $env:VERITAS_ALLOW_HEURISTIC_FALLBACK="false"
 ```
 
-## Limitaciones a tener en cuenta (importante)
+## Configuracion util
+
+- `DEEPFAKE_MODEL_NAME`: modelo de imagen. Default `prithivMLmods/deepfake-detector-model-v1`.
+- `AUDIO_DEEPFAKE_MODEL_NAME`: modelo de audio. Default `Gustking/wav2vec2-large-xlsr-deepfake-audio-classification`.
+- `VERITAS_DEVICE`: `auto`, `cpu`, `cuda` o `mps`.
+- `VERITAS_USE_FP16`: `auto`, `true` o `false`; solo se usa en CUDA.
+- `IMAGE_UNTRUSTED_THRESHOLD`: default `30`. Desde este valor una imagen se marca como no confiable.
+- `AUDIO_MAX_DURATION_SEC`: default `60`, para no cargar audios gigantes en memoria.
+- `VIDEO_MAX_FRAMES`: default `12`.
+- `VIDEO_SAMPLE_METHOD`: `uniform` o `random`.
+- `VIDEO_FAKE_RATIO_THRESHOLD`: default `0.30`.
+- `LINK_TRUSTED_DOMAINS`: dominios confiables separados por coma.
+- `LINK_EXPAND_SHORTENERS`: default `false`; si es `true`, intenta expandir acortadores con una llamada HTTP.
+
+Los endpoints FastAPI ejecutan los detectores pesados fuera del event loop usando `asyncio.to_thread`.
+
+## Limitaciones a tener en cuenta (importante para la demo)
 
 1. **Son modelos de la comunidad, no de empresas grandes.** Entrenados en datasets acotados, perfectos para mostrar el concepto funcionando, pero su precision en el mundo real puede ser menor que la de un producto comercial como Resemble, Hive o Reality Defender.
 2. **El detector de video es un enfoque simplificado**: analiza frames sueltos con el modelo de imagen, no captura inconsistencias temporales como parpadeo o flujo de movimiento como lo haria un modelo especifico tipo CNN+LSTM entrenado para video.

@@ -18,7 +18,7 @@ import {
 } from "react-native";
 
 import { API_URL, analyzeFile, analyzeUrl, checkBackend } from "./src/api/client";
-import type { AnalysisReport, InputMode, SelectedAsset } from "./src/types";
+import type { AnalysisReport, InputMode, RawDetectorResult, SelectedAsset } from "./src/types";
 
 const acceptedMime = ["image/*", "audio/*", "video/*"];
 
@@ -50,10 +50,22 @@ function formatPercent(value: number): string {
 }
 
 function riskColor(report?: AnalysisReport): string {
-  if (!report) return "#2F6B63";
-  if (report.ai_percentage >= 70) return "#B42318";
-  if (report.ai_percentage >= 40) return "#B7791F";
-  return "#24735C";
+  if (!report) return "#0F766E";
+  if (report.ai_percentage >= 70) return "#C62828";
+  if (report.warning || report.ai_percentage >= 30) return "#B26A00";
+  return "#16805F";
+}
+
+function trustStatus(report?: AnalysisReport): string {
+  if (!report) return "LISTO";
+  return report.trust_status ?? (report.warning ? "NO CONFIABLE" : "CONFIABLE");
+}
+
+function trustIcon(report?: AnalysisReport): keyof typeof MaterialCommunityIcons.glyphMap {
+  const status = trustStatus(report);
+  if (status === "NO CONFIABLE") return "shield-alert";
+  if (status === "REVISAR") return "shield-half-full";
+  return "shield-check";
 }
 
 function modalityLabel(modality: string): string {
@@ -196,6 +208,15 @@ export default function App() {
   const percentage = report?.ai_percentage ?? 0;
   const barWidth = `${Math.min(Math.max(percentage, 3), 100)}%`;
   const color = riskColor(report ?? undefined);
+  const status = trustStatus(report ?? undefined);
+  const primaryRaw: RawDetectorResult | undefined = report?.raw_results?.[0];
+  const reasons = primaryRaw?.reasons?.slice(0, 4) ?? [];
+  const modelDetails = [
+    primaryRaw?.device ? `device ${primaryRaw.device}` : null,
+    primaryRaw?.source ? String(primaryRaw.source).replaceAll("_", " ") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -341,29 +362,62 @@ export default function App() {
           {report ? (
             <View style={styles.resultPanel}>
               <View style={styles.resultTop}>
-                <View>
-                  <Text style={styles.resultLabel}>Porcentaje estimado de IA</Text>
-                  <Text style={[styles.percentText, { color }]}>{formatPercent(percentage)}</Text>
+                <View style={[styles.resultIconWrap, { backgroundColor: color }]}>
+                  <MaterialCommunityIcons name={trustIcon(report)} size={31} color="#FFFFFF" />
                 </View>
-                <View style={[styles.verdictBadge, { borderColor: color }]}>
-                  <Text style={[styles.verdictText, { color }]}>{report.overall_verdict}</Text>
+                <View style={styles.resultTitleWrap}>
+                  <Text style={styles.resultLabel}>Estado Veritas</Text>
+                  <Text style={[styles.statusTitle, { color }]}>{status}</Text>
+                  <Text style={styles.statusMeta}>{report.overall_verdict}</Text>
                 </View>
+                <Text style={[styles.percentText, { color }]}>{formatPercent(percentage)}</Text>
               </View>
 
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: (barWidth as any), backgroundColor: color }]} />
               </View>
 
+              <View style={styles.metricStrip}>
+                <View style={styles.metricCell}>
+                  <Text style={styles.metricLabel}>IA estimada</Text>
+                  <Text style={styles.metricValue}>{formatPercent(percentage)}</Text>
+                </View>
+                <View style={styles.metricDivider} />
+                <View style={styles.metricCell}>
+                  <Text style={styles.metricLabel}>Modalidades</Text>
+                  <Text style={styles.metricValue}>{report.modalities_analyzed}</Text>
+                </View>
+                <View style={styles.metricDivider} />
+                <View style={styles.metricCell}>
+                  <Text style={styles.metricLabel}>Decision</Text>
+                  <Text style={styles.metricValueSmall}>{status}</Text>
+                </View>
+              </View>
+
               {report.warning ? (
                 <View style={styles.warningBox}>
                   <MaterialCommunityIcons name="alert-octagon" size={24} color="#B42318" />
                   <Text style={styles.warningText}>
-                    NO CONFIAR: el contenido tiene senales fuertes de IA o fraude.
+                    NO CONFIAR sin una segunda verificacion.
                   </Text>
                 </View>
               ) : null}
 
               <Text style={styles.recommendation}>{report.recommendation}</Text>
+
+              {reasons.length ? (
+                <View style={styles.reasonsBlock}>
+                  <Text style={styles.sectionLabel}>Senales detectadas</Text>
+                  {reasons.map((reason) => (
+                    <View key={reason} style={styles.reasonRow}>
+                      <MaterialCommunityIcons name="circle-medium" size={18} color="#3B5BDB" />
+                      <Text style={styles.reasonText}>{reason}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {modelDetails ? <Text style={styles.engineText}>{modelDetails}</Text> : null}
 
               <View style={styles.modalityList}>
                 {report.per_modality_summary.map((item) => (
@@ -379,6 +433,9 @@ export default function App() {
                         {item.verdict} · confianza {Math.round(item.confidence * 100)}%
                         {typeof item.ai_probability === "number"
                           ? ` · IA ${Math.round(item.ai_probability)}%`
+                          : ""}
+                        {typeof item.threshold === "number"
+                          ? ` · umbral ${Math.round(item.threshold)}%`
                           : ""}
                       </Text>
                     </View>
@@ -396,7 +453,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F6F7F2",
+    backgroundColor: "#F4F7FB",
   },
   keyboard: {
     flex: 1,
@@ -414,7 +471,7 @@ const styles = StyleSheet.create({
   },
   brandMark: {
     alignItems: "center",
-    backgroundColor: "#2F6B63",
+    backgroundColor: "#1D4ED8",
     borderRadius: 8,
     height: 54,
     justifyContent: "center",
@@ -424,13 +481,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   appName: {
-    color: "#172826",
+    color: "#102A43",
     fontSize: 33,
     fontWeight: "800",
     letterSpacing: 0,
   },
   subtitle: {
-    color: "#4F635F",
+    color: "#52677A",
     fontSize: 15,
     marginTop: 2,
   },
@@ -441,12 +498,12 @@ const styles = StyleSheet.create({
     minHeight: 26,
   },
   statusText: {
-    color: "#526561",
+    color: "#52677A",
     flex: 1,
     fontSize: 12,
   },
   segmented: {
-    backgroundColor: "#E7EDE4",
+    backgroundColor: "#E6EEF8",
     borderRadius: 8,
     flexDirection: "row",
     padding: 4,
@@ -461,10 +518,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   segmentActive: {
-    backgroundColor: "#263C3A",
+    backgroundColor: "#0F766E",
   },
   segmentText: {
-    color: "#263C3A",
+    color: "#233B53",
     fontSize: 15,
     fontWeight: "700",
   },
@@ -473,19 +530,19 @@ const styles = StyleSheet.create({
   },
   panel: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#DCE4DB",
+    borderColor: "#D8E2ED",
     borderRadius: 8,
     borderWidth: 1,
     padding: 16,
     gap: 13,
   },
   panelTitle: {
-    color: "#172826",
+    color: "#102A43",
     fontSize: 20,
     fontWeight: "800",
   },
   panelCopy: {
-    color: "#526561",
+    color: "#52677A",
     fontSize: 14,
     lineHeight: 20,
   },
@@ -495,8 +552,8 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     alignItems: "center",
-    backgroundColor: "#EDF2EA",
-    borderColor: "#D3DDD0",
+    backgroundColor: "#EEF6FF",
+    borderColor: "#CCE1FF",
     borderRadius: 8,
     borderWidth: 1,
     flex: 1,
@@ -506,14 +563,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   actionText: {
-    color: "#263C3A",
+    color: "#233B53",
     fontSize: 13,
     fontWeight: "700",
   },
   selectedBox: {
     alignItems: "center",
-    backgroundColor: "#F7FAF6",
-    borderColor: "#CFDDD7",
+    backgroundColor: "#F5FAFF",
+    borderColor: "#CFE1F5",
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: "row",
@@ -525,28 +582,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   selectedName: {
-    color: "#172826",
+    color: "#102A43",
     fontSize: 14,
     fontWeight: "800",
   },
   selectedMeta: {
-    color: "#526561",
+    color: "#52677A",
     fontSize: 12,
     marginTop: 3,
   },
   input: {
-    backgroundColor: "#F7FAF6",
-    borderColor: "#CFDDD7",
+    backgroundColor: "#F9FBFF",
+    borderColor: "#CFE1F5",
     borderRadius: 8,
     borderWidth: 1,
-    color: "#172826",
+    color: "#102A43",
     fontSize: 15,
     minHeight: 52,
     paddingHorizontal: 14,
   },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: "#2F6B63",
+    backgroundColor: "#0F766E",
     borderRadius: 8,
     flexDirection: "row",
     gap: 10,
@@ -554,7 +611,7 @@ const styles = StyleSheet.create({
     minHeight: 54,
   },
   primaryButtonDisabled: {
-    backgroundColor: "#93A39D",
+    backgroundColor: "#91A4B7",
   },
   primaryButtonText: {
     color: "#F7FAF6",
@@ -579,25 +636,46 @@ const styles = StyleSheet.create({
   },
   resultPanel: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#DCE4DB",
+    borderColor: "#D8E2ED",
     borderRadius: 8,
     borderWidth: 1,
     gap: 15,
     padding: 16,
   },
   resultTop: {
-    alignItems: "flex-start",
+    alignItems: "center",
     flexDirection: "row",
     gap: 12,
     justifyContent: "space-between",
   },
   resultLabel: {
-    color: "#526561",
+    color: "#52677A",
     fontSize: 13,
     fontWeight: "700",
   },
+  resultIconWrap: {
+    alignItems: "center",
+    borderRadius: 8,
+    height: 56,
+    justifyContent: "center",
+    width: 56,
+  },
+  resultTitleWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  statusTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  statusMeta: {
+    color: "#52677A",
+    fontSize: 12,
+    fontWeight: "800",
+  },
   percentText: {
-    fontSize: 46,
+    fontSize: 36,
     fontWeight: "900",
     letterSpacing: 0,
   },
@@ -612,7 +690,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   progressTrack: {
-    backgroundColor: "#E6ECE8",
+    backgroundColor: "#E5EAF1",
     borderRadius: 8,
     height: 12,
     overflow: "hidden",
@@ -620,6 +698,40 @@ const styles = StyleSheet.create({
   progressFill: {
     borderRadius: 8,
     height: "100%",
+  },
+  metricStrip: {
+    alignItems: "center",
+    backgroundColor: "#F6F9FD",
+    borderColor: "#E1E8F0",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    minHeight: 72,
+  },
+  metricCell: {
+    flex: 1,
+    gap: 4,
+    paddingHorizontal: 10,
+  },
+  metricDivider: {
+    backgroundColor: "#D8E2ED",
+    height: 40,
+    width: 1,
+  },
+  metricLabel: {
+    color: "#68798B",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  metricValue: {
+    color: "#102A43",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  metricValueSmall: {
+    color: "#102A43",
+    fontSize: 13,
+    fontWeight: "900",
   },
   warningBox: {
     alignItems: "center",
@@ -639,16 +751,40 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   recommendation: {
-    color: "#263C3A",
+    color: "#233B53",
     fontSize: 14,
     lineHeight: 21,
+  },
+  reasonsBlock: {
+    gap: 7,
+  },
+  sectionLabel: {
+    color: "#102A43",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  reasonRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 4,
+  },
+  reasonText: {
+    color: "#52677A",
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  engineText: {
+    color: "#68798B",
+    fontSize: 12,
+    lineHeight: 17,
   },
   modalityList: {
     gap: 10,
   },
   modalityItem: {
     alignItems: "center",
-    backgroundColor: "#F7FAF6",
+    backgroundColor: "#F7FAFC",
     borderRadius: 8,
     flexDirection: "row",
     gap: 10,
@@ -659,12 +795,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalityTitle: {
-    color: "#172826",
+    color: "#102A43",
     fontSize: 14,
     fontWeight: "800",
   },
   modalityMeta: {
-    color: "#526561",
+    color: "#52677A",
     fontSize: 12,
     marginTop: 3,
   },

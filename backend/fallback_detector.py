@@ -15,7 +15,7 @@ def analyze_file_fallback(path: str, modality: str, error: Exception) -> dict:
         return _audio_fallback(path, error)
     if modality == "video":
         return _video_fallback(path, error)
-        return _make_result(path, modality, 50, ["Tipo de archivo no reconocido"], error)
+    return _make_result(path, modality, 50, ["Tipo de archivo no reconocido"], error)
 
 
 def _image_fallback(path: str, error: Exception) -> dict:
@@ -167,7 +167,8 @@ def _make_result(
     error: Exception,
 ) -> dict:
     ai_probability = round(min(max(score, 0), 100), 1)
-    label = "synthetic" if ai_probability >= 55 else "real"
+    threshold = _threshold_for_modality(modality)
+    label = "synthetic" if ai_probability >= threshold else "real"
     confidence = ai_probability / 100 if label == "synthetic" else 1 - ai_probability / 100
 
     return {
@@ -179,8 +180,11 @@ def _make_result(
             "real": round(1 - ai_probability / 100, 4),
         },
         "ai_probability": ai_probability,
+        "threshold": threshold,
         "reasons": reasons,
+        "device": "cpu",
         "source": "local_heuristic_fallback",
+        "model": "heuristic",
         "model_error": _short_error(error),
         "file_name": Path(path).name,
     }
@@ -189,3 +193,13 @@ def _make_result(
 def _short_error(error: Exception) -> str:
     message = str(error).replace("\n", " ").strip()
     return f"{error.__class__.__name__}: {message[:180]}"
+
+
+def _threshold_for_modality(modality: str) -> float:
+    defaults = {
+        "image": os.getenv("IMAGE_UNTRUSTED_THRESHOLD", "30"),
+        "video": os.getenv("VIDEO_UNTRUSTED_THRESHOLD", "30"),
+        "audio": os.getenv("AUDIO_UNTRUSTED_THRESHOLD", "55"),
+        "link": os.getenv("LINK_UNTRUSTED_THRESHOLD", "45"),
+    }
+    return float(defaults.get(modality, os.getenv("VERITAS_UNTRUSTED_THRESHOLD", "55")))
