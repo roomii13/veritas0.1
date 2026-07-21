@@ -52,20 +52,37 @@ function formatPercent(value: number): string {
 function riskColor(report?: AnalysisReport): string {
   if (!report) return "#0F766E";
   if (report.ai_percentage >= 70) return "#C62828";
-  if (report.warning || report.ai_percentage >= 30) return "#B26A00";
+  if (isPreventiveReport(report)) return "#B26A00";
   return "#16805F";
 }
 
 function trustStatus(report?: AnalysisReport): string {
   if (!report) return "LISTO";
-  return report.trust_status ?? (report.warning ? "NO CONFIABLE" : "CONFIABLE");
+  if (report.trust_status) return report.trust_status;
+  if (report.ai_percentage >= 70) return "NO CONFIABLE";
+  if (isPreventiveReport(report)) return "PREVENCION";
+  return "CONFIABLE";
 }
 
 function trustIcon(report?: AnalysisReport): keyof typeof MaterialCommunityIcons.glyphMap {
   const status = trustStatus(report);
   if (status === "NO CONFIABLE") return "shield-alert";
-  if (status === "REVISAR") return "shield-half-full";
+  if (status === "PREVENCION" || status === "REVISAR") return "shield-half-full";
   return "shield-check";
+}
+
+function isPreventiveReport(report: AnalysisReport): boolean {
+  const hasSuspiciousModality = report.per_modality_summary.some(
+    (item) =>
+      item.verdict === "SOSPECHOSO" ||
+      item.trust_status === "PREVENCION" ||
+      (typeof item.ai_probability === "number" && item.ai_probability >= 30),
+  );
+  const usedFallback = report.raw_results?.some(
+    (item) => item.source === "local_heuristic_fallback",
+  );
+
+  return report.warning || report.prevention === true || report.ai_percentage >= 30 || hasSuspiciousModality || Boolean(usedFallback);
 }
 
 function modalityLabel(modality: string): string {
@@ -394,11 +411,17 @@ export default function App() {
                 </View>
               </View>
 
-              {report.warning ? (
-                <View style={styles.warningBox}>
-                  <MaterialCommunityIcons name="alert-octagon" size={24} color="#B42318" />
+              {isPreventiveReport(report) ? (
+                <View style={[styles.warningBox, status === "PREVENCION" && styles.preventionBox]}>
+                  <MaterialCommunityIcons
+                    name={status === "NO CONFIABLE" ? "alert-octagon" : "alert"}
+                    size={24}
+                    color={status === "NO CONFIABLE" ? "#B42318" : "#B26A00"}
+                  />
                   <Text style={styles.warningText}>
-                    NO CONFIAR sin una segunda verificacion.
+                    {status === "NO CONFIABLE"
+                      ? "NO CONFIAR sin una segunda verificacion."
+                      : "PREVENCION: casi 40% o senales moderadas no deben mostrarse como confiables."}
                   </Text>
                 </View>
               ) : null}
@@ -423,9 +446,9 @@ export default function App() {
                 {report.per_modality_summary.map((item) => (
                   <View key={`${item.modality}-${item.verdict}`} style={styles.modalityItem}>
                     <MaterialCommunityIcons
-                      name={item.verdict === "SOSPECHOSO" ? "close-circle" : "check-circle"}
+                      name={item.verdict === "SOSPECHOSO" ? "alert-circle" : "check-circle"}
                       size={22}
-                      color={item.verdict === "SOSPECHOSO" ? "#B42318" : "#24735C"}
+                      color={item.verdict === "SOSPECHOSO" ? "#B26A00" : "#24735C"}
                     />
                     <View style={styles.modalityTextWrap}>
                       <Text style={styles.modalityTitle}>{modalityLabel(item.modality)}</Text>
@@ -742,6 +765,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     padding: 12,
+  },
+  preventionBox: {
+    backgroundColor: "#FFF7E6",
+    borderColor: "#F8D49A",
   },
   warningText: {
     color: "#8E1F15",

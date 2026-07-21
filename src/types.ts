@@ -40,7 +40,8 @@ export type AnalysisReport = {
   ai_percentage: number;
   modalities_analyzed: number;
   recommendation: string;
-  trust_status?: "NO CONFIABLE" | "REVISAR" | "CONFIABLE";
+  trust_status?: "NO CONFIABLE" | "PREVENCION" | "REVISAR" | "CONFIABLE";
+  prevention?: boolean;
   warning: boolean;
   per_modality_summary: ModalitySummary[];
   raw_results?: RawDetectorResult[];

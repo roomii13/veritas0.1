@@ -1,22 +1,22 @@
 from __future__ import annotations
-
+import asyncio
 import ipaddress
 import os
 import socket
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
-
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
-from starlette.concurrency import run_in_threadpool
-
 from link_detector import analyze_link
 from pipeline import aggregate_results
-
 from .analysis_service import analyze_path
 
 MAX_UPLOAD_BYTES = int(os.getenv("VERITAS_MAX_UPLOAD_MB", "120")) * 1024 * 1024
@@ -73,7 +73,8 @@ async def ensure_cors_on_errors(request: Request, call_next):
         )
 
     for header, value in _cors_headers().items():
-        response.headers.setdefault(header, value)
+        if header not in response.headers:
+            response.headers[header] = value
     return response
 
 
@@ -95,7 +96,7 @@ def health():
     return {
         "status": "ok",
         "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
-        "heuristic_fallback": os.getenv("VERITAS_ALLOW_HEURISTIC_FALLBACK", "true"),
+        "media_fallback": "disabled",
     }
 
 
@@ -110,7 +111,7 @@ async def analyze_file_endpoint(file: UploadFile = File(...)):
 
     path = await _save_upload(file)
     try:
-        result = await run_in_threadpool(analyze_path, path, modality)
+        result = await _analyze_media_or_503(path, modality)
         report = aggregate_results([result])
         report["input"] = {
             "type": "file",
@@ -130,7 +131,7 @@ async def analyze_url_endpoint(payload: UrlPayload):
         raise HTTPException(status_code=400, detail="Debes enviar una URL.")
 
     try:
-        path, modality, content_type = await run_in_threadpool(_download_direct_media, url)
+        path, modality, content_type = await asyncio.to_thread(_download_direct_media, url)
     except NotDirectMedia as exc:
         report = aggregate_results([analyze_link(url)])
         report["input"] = {
@@ -141,17 +142,16 @@ async def analyze_url_endpoint(payload: UrlPayload):
         }
         return report
     except Exception as exc:
-        report = aggregate_results([analyze_link(url)])
-        report["input"] = {
-            "type": "link",
-            "url": url,
-            "downloaded": False,
-            "download_error": f"{exc.__class__.__name__}: {str(exc)[:160]}",
-        }
-        return report
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "No se pudo descargar el archivo multimedia del enlace. "
+                f"{exc.__class__.__name__}: {str(exc)[:180]}"
+            ),
+        ) from exc
 
     try:
-        result = await run_in_threadpool(analyze_path, path, modality)
+        result = await _analyze_media_or_503(path, modality)
         report = aggregate_results([result])
         report["input"] = {
             "type": "url-media",
@@ -163,6 +163,20 @@ async def analyze_url_endpoint(payload: UrlPayload):
         return report
     finally:
         _safe_unlink(path)
+
+
+async def _analyze_media_or_503(path: str, modality: str) -> dict:
+    try:
+        return await asyncio.to_thread(analyze_path, path, modality)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "El modelo principal de Veritas no pudo ejecutarse. "
+                "No se genero fallback ni porcentaje heuristico. "
+                f"{exc.__class__.__name__}: {str(exc)[:220]}"
+            ),
+        ) from exc
 
 
 async def _save_upload(file: UploadFile) -> str:

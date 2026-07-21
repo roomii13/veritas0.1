@@ -30,6 +30,16 @@ FAKE_TOKENS = (
     "malicious",
 )
 REAL_TOKENS = ("real", "bonafide", "genuine", "human", "legit", "ok")
+PREVENTION_THRESHOLD = float(os.getenv("VERITAS_PREVENTION_THRESHOLD", "30"))
+HIGH_RISK_THRESHOLD = float(os.getenv("VERITAS_HIGH_RISK_THRESHOLD", "70"))
+
+DEFAULT_UNTRUSTED_THRESHOLDS = {
+    "image": float(os.getenv("IMAGE_UNTRUSTED_THRESHOLD", "30")),
+    "video": float(os.getenv("VIDEO_UNTRUSTED_THRESHOLD", "30")),
+    "audio": float(os.getenv("AUDIO_UNTRUSTED_THRESHOLD", "30")),
+    "link": float(os.getenv("LINK_UNTRUSTED_THRESHOLD", "45")),
+    "unknown": float(os.getenv("VERITAS_UNTRUSTED_THRESHOLD", "30")),
+}
 
 
 def build_report(image_path=None, audio_path=None, video_path=None) -> dict:
@@ -66,27 +76,37 @@ def aggregate_results(results: Iterable[dict]) -> dict:
     normalized_results = []
     per_modality = []
     ai_values = []
-    high_confidence_fake = False
+    has_prevention_signal = False
+    has_high_risk_signal = False
 
     for raw in results:
         result = dict(raw)
         label = str(result.get("label", "")).lower()
         confidence = float(result.get("confidence", 0.0))
+        modality = str(result.get("modality", "unknown")).lower()
+        threshold = _threshold_for_modality(modality)
         ai_probability = _ai_probability_from_result(result)
-        is_fake = _label_has_token(label, FAKE_TOKENS) or ai_probability >= 55
+        uses_fallback = str(result.get("source", "")).lower() == "local_heuristic_fallback"
+        is_fake = _label_has_token(label, FAKE_TOKENS) or ai_probability >= threshold
+        needs_prevention = is_fake or uses_fallback or ai_probability >= PREVENTION_THRESHOLD
 
-        if is_fake and (confidence > 0.85 or ai_probability >= 85):
-            high_confidence_fake = True
+        if needs_prevention:
+            has_prevention_signal = True
+        if is_fake and (confidence > 0.85 or ai_probability >= HIGH_RISK_THRESHOLD):
+            has_high_risk_signal = True
 
         result["ai_probability"] = round(ai_probability, 1)
+        result["threshold"] = threshold
         normalized_results.append(result)
         ai_values.append(ai_probability)
         per_modality.append(
             {
-                "modality": result.get("modality", "unknown"),
-                "verdict": "SOSPECHOSO" if is_fake else "OK",
+                "modality": modality,
+                "verdict": "SOSPECHOSO" if needs_prevention else "OK",
                 "confidence": round(confidence, 4),
                 "ai_probability": round(ai_probability, 1),
+                "threshold": threshold,
+                "trust_status": "PREVENCION" if needs_prevention else "CONFIABLE",
             }
         )
 
@@ -96,24 +116,27 @@ def aggregate_results(results: Iterable[dict]) -> dict:
     average_ai = sum(ai_values) / len(ai_values)
     max_ai = max(ai_values)
     ai_percentage = max(average_ai, max_ai * 0.75)
-    if high_confidence_fake:
-        ai_percentage = max(ai_percentage, 85)
+    if has_high_risk_signal:
+        ai_percentage = max(ai_percentage, HIGH_RISK_THRESHOLD)
     ai_percentage = round(min(max(ai_percentage, 0), 100), 1)
 
-    if ai_percentage >= 70:
+    if ai_percentage >= HIGH_RISK_THRESHOLD:
         overall = "ALTO RIESGO"
+        trust_status = "NO CONFIABLE"
         recommendation = (
             "NO CONFIAR. Verifica por otro canal, no transfieras dinero, no abras adjuntos "
             "y solicita validacion humana antes de actuar."
         )
-    elif ai_percentage >= 40:
+    elif has_prevention_signal or ai_percentage >= PREVENTION_THRESHOLD:
         overall = "RIESGO MEDIO"
+        trust_status = "PREVENCION"
         recommendation = (
-            "Revisar con cautela. Busca otra fuente, confirma identidad y evita decisiones "
-            "urgentes basadas solo en este contenido."
+            "PREVENCION. No lo tomes como confiable todavia: verifica por otro canal, "
+            "revisa la fuente y evita actuar con urgencia si hay dinero o datos personales."
         )
     else:
         overall = "BAJO RIESGO"
+        trust_status = "CONFIABLE"
         recommendation = (
             "No hay senales fuertes de IA en este demo, pero no reemplaza una verificacion "
             "manual si hay dinero, datos personales o presion por urgencia."
@@ -126,7 +149,9 @@ def aggregate_results(results: Iterable[dict]) -> dict:
         "modalities_analyzed": len(normalized_results),
         "per_modality_summary": per_modality,
         "recommendation": recommendation,
-        "warning": ai_percentage >= 70,
+        "trust_status": trust_status,
+        "prevention": has_prevention_signal or ai_percentage >= PREVENTION_THRESHOLD,
+        "warning": trust_status != "CONFIABLE",
         "raw_results": normalized_results,
     }
 
@@ -139,6 +164,16 @@ def _assert_exists(path: str) -> None:
 def _label_has_token(label: str, tokens: tuple[str, ...]) -> bool:
     compact = re.sub(r"[^a-z0-9]+", "", label.lower())
     return any(token in compact for token in tokens)
+
+
+def _threshold_for_modality(modality: str) -> float:
+    env_name = f"{modality.upper()}_UNTRUSTED_THRESHOLD"
+    if env_name in os.environ:
+        return float(os.environ[env_name])
+    return DEFAULT_UNTRUSTED_THRESHOLDS.get(
+        modality,
+        DEFAULT_UNTRUSTED_THRESHOLDS["unknown"],
+    )
 
 
 def _ai_probability_from_result(result: dict) -> float:

@@ -20,7 +20,7 @@ def analyze_file_fallback(path: str, modality: str, error: Exception) -> dict:
 
 def _image_fallback(path: str, error: Exception) -> dict:
     reasons = []
-    score = 22
+    score = 42
 
     try:
         import numpy as np
@@ -66,7 +66,7 @@ def _image_fallback(path: str, error: Exception) -> dict:
 
 def _audio_fallback(path: str, error: Exception) -> dict:
     reasons = []
-    score = 24
+    score = 55
 
     try:
         import librosa
@@ -166,22 +166,24 @@ def _make_result(
     reasons: list[str],
     error: Exception,
 ) -> dict:
-    ai_probability = round(min(max(score, 0), 100), 1)
+    ai_probability = round(min(max(score, _fallback_floor(modality)), 100), 1)
     threshold = _threshold_for_modality(modality)
-    label = "synthetic" if ai_probability >= threshold else "real"
-    confidence = ai_probability / 100 if label == "synthetic" else 1 - ai_probability / 100
+    label = "model_unavailable"
+    confidence = 0.0
 
     return {
         "modality": modality,
         "label": label,
         "confidence": round(confidence, 4),
         "scores": {
+            "unverified": 1.0,
             "synthetic": round(ai_probability / 100, 4),
-            "real": round(1 - ai_probability / 100, 4),
         },
         "ai_probability": ai_probability,
         "threshold": threshold,
         "reasons": reasons,
+        "requires_prevention": True,
+        "model_unavailable": True,
         "device": "cpu",
         "source": "local_heuristic_fallback",
         "model": "heuristic",
@@ -199,7 +201,16 @@ def _threshold_for_modality(modality: str) -> float:
     defaults = {
         "image": os.getenv("IMAGE_UNTRUSTED_THRESHOLD", "30"),
         "video": os.getenv("VIDEO_UNTRUSTED_THRESHOLD", "30"),
-        "audio": os.getenv("AUDIO_UNTRUSTED_THRESHOLD", "55"),
+        "audio": os.getenv("AUDIO_UNTRUSTED_THRESHOLD", "30"),
         "link": os.getenv("LINK_UNTRUSTED_THRESHOLD", "45"),
     }
-    return float(defaults.get(modality, os.getenv("VERITAS_UNTRUSTED_THRESHOLD", "55")))
+    return float(defaults.get(modality, os.getenv("VERITAS_UNTRUSTED_THRESHOLD", "30")))
+
+
+def _fallback_floor(modality: str) -> float:
+    defaults = {
+        "image": os.getenv("IMAGE_FALLBACK_MIN_PERCENT", "70"),
+        "audio": os.getenv("AUDIO_FALLBACK_MIN_PERCENT", "70"),
+        "video": os.getenv("VIDEO_FALLBACK_MIN_PERCENT", "70"),
+    }
+    return float(defaults.get(modality, os.getenv("VERITAS_FALLBACK_MIN_PERCENT", "70")))

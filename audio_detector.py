@@ -138,7 +138,17 @@ def _load_waveform(audio_path: str) -> tuple[np.ndarray, float, float]:
             res_type="kaiser_fast",
         )
     except Exception as exc:
-        raise ValueError(f"No se pudo leer el audio '{audio_path}': {exc}") from exc
+        try:
+            waveform, _ = librosa.load(
+                audio_path,
+                sr=TARGET_SR,
+                mono=True,
+                duration=MAX_DURATION_SEC,
+            )
+        except Exception as retry_exc:
+            raise ValueError(
+                f"No se pudo leer el audio '{audio_path}': {retry_exc}"
+            ) from exc
 
     if waveform.size == 0:
         raise ValueError("El audio no contiene muestras validas.")

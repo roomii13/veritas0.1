@@ -82,23 +82,22 @@ Tambien podes pedir JSON:
 python pipeline.py --image foto.jpg --json
 ```
 
-## Fallback de demo
+## Modelos obligatorios
 
-Por defecto, el backend tiene `VERITAS_ALLOW_HEURISTIC_FALLBACK=true`.
+Veritas no usa fallback para imagen, audio ni video. Si un modelo Hugging Face no puede ejecutarse, la API devuelve error `503` y no inventa un porcentaje heuristico.
 
-Esto evita que la demo quede inutilizable si Torch/Hugging Face falla o si el modelo aun no se pudo descargar. En ese caso devuelve una estimacion heuristica local marcada como `local_heuristic_fallback`. Para una demo estricta solo con modelos, usa:
-
-```powershell
-$env:VERITAS_ALLOW_HEURISTIC_FALLBACK="false"
-```
+Esto es intencional: si el audio o la imagen son IA, Veritas debe medir con el modelo real.
 
 ## Configuracion util
 
 - `DEEPFAKE_MODEL_NAME`: modelo de imagen. Default `prithivMLmods/deepfake-detector-model-v1`.
+- `IMAGE_MODEL_NAMES`: ensemble de modelos reales para imagen. Default `prithivMLmods/deepfake-detector-model-v1,capcheck/ai-image-detection`.
 - `AUDIO_DEEPFAKE_MODEL_NAME`: modelo de audio. Default `Gustking/wav2vec2-large-xlsr-deepfake-audio-classification`.
 - `VERITAS_DEVICE`: `auto`, `cpu`, `cuda` o `mps`.
 - `VERITAS_USE_FP16`: `auto`, `true` o `false`; solo se usa en CUDA.
-- `IMAGE_UNTRUSTED_THRESHOLD`: default `30`. Desde este valor una imagen se marca como no confiable.
+- `VERITAS_PREVENTION_THRESHOLD`: default `30`. Desde este valor la app muestra prevencion, no confiable verde.
+- `IMAGE_UNTRUSTED_THRESHOLD`: default `30`. Desde este valor una imagen se marca como preventiva/no confiable.
+- `AUDIO_UNTRUSTED_THRESHOLD`: default `30`. El modelo de audio fake fuerte igual suele devolver porcentajes altos.
 - `AUDIO_MAX_DURATION_SEC`: default `60`, para no cargar audios gigantes en memoria.
 - `VIDEO_MAX_FRAMES`: default `12`.
 - `VIDEO_SAMPLE_METHOD`: `uniform` o `random`.
